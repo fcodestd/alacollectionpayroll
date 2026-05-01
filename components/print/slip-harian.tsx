@@ -1,4 +1,5 @@
 "use client";
+
 import React from "react";
 
 const formatRp = (angka: number) =>
@@ -47,11 +48,13 @@ export default function SlipHarianPrint({
   data,
   startDate,
   endDate,
+  isPdfMode = false,
 }: {
   employee: any;
   data: Record<string, any>;
   startDate: string;
   endDate: string;
+  isPdfMode?: boolean;
 }) {
   const startD = new Date(`${startDate}T00:00:00`);
   const endD = new Date(`${endDate}T00:00:00`);
@@ -82,14 +85,17 @@ export default function SlipHarianPrint({
 
   return (
     <div
-      className="hidden print:block print:fixed print:inset-0 print:bg-white print:z-[99999] text-black bg-white"
+      className={`w-full text-black bg-white ${
+        isPdfMode
+          ? ""
+          : "hidden print:block print:fixed print:inset-0 print:bg-white print:z-[99999]"
+      }`}
       style={{ fontFamily: "Arial, sans-serif" }}
     >
       <div className="w-full max-w-[1200px] mx-auto p-4 pt-8">
-        {/* HEADER PERUSAHAAN */}
         <div className="flex justify-between items-end border-b-4 border-emerald-900 pb-4 mb-6">
           <div>
-            <h1 className="text-3xl font-extrabold text-blue-900 tracking-tight">
+            <h1 className="text-3xl font-extrabold text-emerald-900 tracking-tight">
               ALA COLLECTION
             </h1>
             <p className="text-sm text-gray-600 mt-1">
@@ -113,7 +119,6 @@ export default function SlipHarianPrint({
           </div>
         </div>
 
-        {/* INFO KARYAWAN */}
         <div className="flex justify-between mb-8">
           <div className="space-y-3">
             <div className="flex">
@@ -151,7 +156,6 @@ export default function SlipHarianPrint({
           </div>
         </div>
 
-        {/* TABEL 7 HARI MINGGUAN */}
         {chunks.map((week, index) => {
           return (
             <div key={index} className="mb-6 page-break-inside-avoid">
@@ -197,7 +201,6 @@ export default function SlipHarianPrint({
                             dayData.status === "hadir" ? (
                               <div className="h-full flex flex-col justify-between p-2 text-[10px] bg-emerald-50/10">
                                 <div className="space-y-1">
-                                  {/* Gaji Pokok */}
                                   <div className="flex justify-between border-b border-gray-200 pb-1">
                                     <span className="text-gray-600">
                                       Gaji Pokok:
@@ -206,8 +209,6 @@ export default function SlipHarianPrint({
                                       {formatRp(dayData.baseSalary)}
                                     </span>
                                   </div>
-
-                                  {/* Tambahan */}
                                   {dayData.bonus > 0 && (
                                     <div className="flex justify-between text-blue-600 pt-0.5">
                                       <span
@@ -221,8 +222,6 @@ export default function SlipHarianPrint({
                                       </span>
                                     </div>
                                   )}
-
-                                  {/* Potongan */}
                                   {dayData.deduction > 0 && (
                                     <div className="flex justify-between text-red-600 pt-0.5">
                                       <span
@@ -237,7 +236,6 @@ export default function SlipHarianPrint({
                                     </div>
                                   )}
                                 </div>
-                                {/* Subtotal */}
                                 <div className="mt-2 pt-1 border-t border-emerald-300 flex justify-between items-center text-[11px]">
                                   <span className="font-bold text-emerald-900">
                                     Total
@@ -267,7 +265,6 @@ export default function SlipHarianPrint({
           );
         })}
 
-        {/* GRAND TOTAL */}
         <div className="mt-8 flex justify-end">
           <div className="bg-[#065F46] text-white py-4 px-8 w-full max-w-[600px] flex justify-between items-center rounded-sm">
             <span className="text-lg font-semibold tracking-wide">

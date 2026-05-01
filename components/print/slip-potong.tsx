@@ -1,4 +1,5 @@
 "use client";
+
 import React from "react";
 
 const formatRp = (angka: number) =>
@@ -47,11 +48,13 @@ export default function SlipPotongPrint({
   data,
   startDate,
   endDate,
+  isPdfMode = false,
 }: {
   employee: any;
   data: Record<string, { qty: number; price: number; subtotal: number }>;
   startDate: string;
   endDate: string;
+  isPdfMode?: boolean;
 }) {
   const startD = new Date(`${startDate}T00:00:00`);
   const endD = new Date(`${endDate}T00:00:00`);
@@ -82,11 +85,14 @@ export default function SlipPotongPrint({
 
   return (
     <div
-      className="hidden print:block print:fixed print:inset-0 print:bg-white print:z-[99999] text-black bg-white"
+      className={`w-full text-black bg-white ${
+        isPdfMode
+          ? ""
+          : "hidden print:block print:fixed print:inset-0 print:bg-white print:z-[99999]"
+      }`}
       style={{ fontFamily: "Arial, sans-serif" }}
     >
       <div className="w-full max-w-[1200px] mx-auto p-4 pt-8">
-        {/* HEADER PERUSAHAAN */}
         <div className="flex justify-between items-end border-b-4 border-indigo-900 pb-4 mb-6">
           <div>
             <h1 className="text-3xl font-extrabold text-indigo-900 tracking-tight">
@@ -113,7 +119,6 @@ export default function SlipPotongPrint({
           </div>
         </div>
 
-        {/* INFO KARYAWAN */}
         <div className="flex justify-between mb-8">
           <div className="space-y-3">
             <div className="flex">
@@ -151,7 +156,6 @@ export default function SlipPotongPrint({
           </div>
         </div>
 
-        {/* TABEL 7 HARI MINGGUAN */}
         {chunks.map((week, index) => {
           return (
             <div key={index} className="mb-6 page-break-inside-avoid">
@@ -218,7 +222,6 @@ export default function SlipPotongPrint({
           );
         })}
 
-        {/* GRAND TOTAL */}
         <div className="mt-8 flex justify-end">
           <div className="bg-[#312E81] text-white py-4 px-8 w-full max-w-[600px] flex justify-between items-center rounded-sm">
             <span className="text-lg font-semibold tracking-wide">

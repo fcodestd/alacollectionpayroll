@@ -8,6 +8,7 @@ const formatRp = (angka: number) =>
     currency: "IDR",
     minimumFractionDigits: 0,
   }).format(angka);
+
 const namaHari = [
   "MINGGU",
   "SENIN",
@@ -32,7 +33,6 @@ const namaBulan = [
   "Dec",
 ];
 
-// FIX BUG: Menggunakan fungsi Date lokal daripada .toISOString() yang mengkonversi ke UTC
 function getLocalYMD(d: Date) {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -50,28 +50,27 @@ export default function SlipGajiPrint({
   startDate,
   endDate,
   is7Days,
+  isPdfMode = false,
 }: {
   employee: any;
   data: any;
   startDate: string;
   endDate: string;
   is7Days: boolean;
+  isPdfMode?: boolean;
 }) {
   const startD = new Date(`${startDate}T00:00:00`);
   const endD = new Date(`${endDate}T00:00:00`);
 
-  // ALGORITMA PADDING (WAJIB SENIN - MINGGU)
   const startDayIndex = startD.getDay();
   const diffToMonday = startDayIndex === 0 ? 6 : startDayIndex - 1;
 
   const endDayIndex = endD.getDay();
   const diffToSunday = endDayIndex === 0 ? 0 : 7 - endDayIndex;
 
-  // Mundurkan ke Senin
   const calendarStart = new Date(startD);
   calendarStart.setDate(startD.getDate() - diffToMonday);
 
-  // Majukan ke Minggu
   const calendarEnd = new Date(endD);
   calendarEnd.setDate(endD.getDate() + diffToSunday);
 
@@ -82,7 +81,6 @@ export default function SlipGajiPrint({
     currentD.setDate(currentD.getDate() + 1);
   }
 
-  // Pecah per 7 Hari (1 Tabel = 1 Minggu)
   const chunks = [];
   for (let i = 0; i < daysArray.length; i += 7) {
     chunks.push(daysArray.slice(i, i + 7));
@@ -92,11 +90,14 @@ export default function SlipGajiPrint({
 
   return (
     <div
-      className="hidden print:block print:fixed print:inset-0 print:bg-white print:z-[99999] text-black bg-white"
+      className={`w-full text-black bg-white ${
+        isPdfMode
+          ? ""
+          : "hidden print:block print:fixed print:inset-0 print:bg-white print:z-[99999]"
+      }`}
       style={{ fontFamily: "Arial, sans-serif" }}
     >
       <div className="w-full max-w-[1200px] mx-auto p-4 pt-8">
-        {/* HEADER PERUSAHAAN */}
         <div className="flex justify-between items-end border-b-4 border-blue-900 pb-4 mb-6">
           <div>
             <h1 className="text-3xl font-extrabold text-blue-900 tracking-tight">
@@ -111,7 +112,7 @@ export default function SlipGajiPrint({
           </div>
           <div className="text-right">
             <h2 className="text-2xl font-bold text-gray-900">
-              SLIP GAJI BORONGAN
+              SLIP GAJI BORONGAN JAHIT
             </h2>
             <p className="text-sm text-gray-500 mt-1">
               Dicetak pada: {formatDatePrint(new Date())},{" "}
@@ -123,7 +124,6 @@ export default function SlipGajiPrint({
           </div>
         </div>
 
-        {/* INFO KARYAWAN */}
         <div className="flex justify-between mb-8">
           <div className="space-y-3">
             <div className="flex">
@@ -136,10 +136,7 @@ export default function SlipGajiPrint({
               <span className="w-40 font-semibold text-gray-700">
                 Jabatan/Tugas
               </span>
-              <span className="capitalize">
-                :{" "}
-                {employee.jenis}
-              </span>
+              <span className="capitalize">: {employee.jenis}</span>
             </div>
           </div>
           <div className="space-y-3">
@@ -164,12 +161,10 @@ export default function SlipGajiPrint({
           </div>
         </div>
 
-        {/* TABEL 7 HARI MINGGUAN (Senin - Minggu) */}
         {chunks.map((week, index) => {
           return (
             <div key={index} className="mb-6 page-break-inside-avoid">
               <table className="w-full border-collapse border border-blue-200">
-                {/* TABLE HEADER */}
                 <thead>
                   <tr className="bg-slate-50">
                     {week.map((day, idx) => (
@@ -187,15 +182,11 @@ export default function SlipGajiPrint({
                     ))}
                   </tr>
                 </thead>
-
-                {/* TABLE BODY */}
                 <tbody>
                   <tr>
                     {week.map((day, idx) => {
-                      // FIX BUG: Gunakan fungsi getLocalYMD agar zona waktunya tidak berubah
                       const dateStr = getLocalYMD(day);
                       const dayData = data[dateStr];
-
                       const isOutsidePeriod = day < startD || day > endD;
 
                       return (
@@ -233,7 +224,7 @@ export default function SlipGajiPrint({
                             </div>
                           ) : (
                             <div className="h-full w-full flex items-center justify-center text-gray-400 italic text-[11px]">
-                              Libur / Tidak ada data
+                              -
                             </div>
                           )}
                         </td>
@@ -241,15 +232,12 @@ export default function SlipGajiPrint({
                     })}
                   </tr>
                 </tbody>
-
-                {/* TABLE FOOTER */}
                 <tfoot>
                   <tr className="bg-slate-50 text-[11px]">
                     {week.map((day, idx) => {
-                      const dateStr = getLocalYMD(day); // Tergantung fungsi lokal
+                      const dateStr = getLocalYMD(day);
                       const dayData = data[dateStr];
                       const isOutsidePeriod = day < startD || day > endD;
-
                       let totalPcs = 0;
                       let totalRp = 0;
 
@@ -284,7 +272,6 @@ export default function SlipGajiPrint({
           );
         })}
 
-        {/* GRAND TOTAL BOX */}
         <div className="mt-8 flex justify-end">
           <div className="bg-[#1E3A8A] text-white py-4 px-8 w-full max-w-[600px] flex justify-between items-center rounded-sm">
             <span className="text-lg font-semibold tracking-wide">

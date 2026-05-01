@@ -6,7 +6,7 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    const hashedPassword = await bcrypt.hash("owner987654321", 15)
+    const hashedPassword = await bcrypt.hash("ala987654321", 15)
 
     // 2. Masukkan ke database
     await db.insert(users).values({
