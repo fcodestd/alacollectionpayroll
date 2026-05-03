@@ -13,7 +13,7 @@ import {
   users,
   employees,
 } from "@/lib/schema";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, count } from "drizzle-orm";
 
 // Tambahkan ke dalam lib/actions/riwayat.ts
 
@@ -138,6 +138,9 @@ export async function getJahitHistory(params: {
   };
 }
 
+// Pastikan Anda meng-import 'count' dari drizzle-orm jika belum ada
+// import { desc, eq, and, gte, lte, count } from "drizzle-orm";
+
 // 2. RIWAYAT CUTTING (POTONG)
 export async function getCuttingHistory(params: {
   startDate?: string;
@@ -147,10 +150,14 @@ export async function getCuttingHistory(params: {
 }) {
   const { startDate, endDate, page = 1, limit = 10 } = params;
   const conds = [];
+
   if (startDate) conds.push(gte(cuttingBatches.date, startDate));
   if (endDate) conds.push(lte(cuttingBatches.date, endDate));
 
-  const baseQuery = db
+  const whereCondition = conds.length > 0 ? and(...conds) : undefined;
+
+  // 1. Ambil Data Spesifik untuk Halaman Ini (Limit & Offset)
+  const data = await db
     .select({
       id: cuttingBatches.id,
       code: cuttingBatches.batchCode,
@@ -160,11 +167,19 @@ export async function getCuttingHistory(params: {
     })
     .from(cuttingBatches)
     .leftJoin(users, eq(cuttingBatches.operatorId, users.id))
-    .where(conds.length > 0 ? and(...conds) : undefined)
-    .orderBy(desc(cuttingBatches.date));
+    .where(whereCondition)
+    // Ditambahkan desc(cuttingBatches.id) sebagai fallback agar urutan 100% konsisten jika ada 2 transaksi di tanggal yang sama
+    .orderBy(desc(cuttingBatches.date), desc(cuttingBatches.id))
+    .limit(limit)
+    .offset((page - 1) * limit);
 
-  const data = await baseQuery.limit(limit).offset((page - 1) * limit);
-  const totalData = (await baseQuery).length;
+  // 2. Hitung Total Data (Menggunakan count agar efisien, tidak me-load seluruh baris ke memori)
+  const totalQuery = await db
+    .select({ value: count() })
+    .from(cuttingBatches)
+    .where(whereCondition);
+
+  const totalData = totalQuery[0]?.value || 0;
 
   return {
     data,
@@ -222,10 +237,12 @@ export async function getJahitDetail(payrollId: number) {
     .where(eq(payrollItems.payrollId, payrollId));
 }
 
-// 3. AMBIL DETAIL POTONG (Untuk Halaman Baru)
-export async function getCuttingDetail(batchId: number) {
-  const [header] = await db
+// 3. GET DETAIL CUTTING (POTONG)
+export async function getCuttingDetail(id: number) {
+  // Ambil Header Transaksi
+  const headerData = await db
     .select({
+      id: cuttingBatches.id,
       code: cuttingBatches.batchCode,
       date: cuttingBatches.date,
       grandTotal: cuttingBatches.grandTotal,
@@ -233,20 +250,30 @@ export async function getCuttingDetail(batchId: number) {
     })
     .from(cuttingBatches)
     .leftJoin(users, eq(cuttingBatches.operatorId, users.id))
-    .where(eq(cuttingBatches.id, batchId));
+    .where(eq(cuttingBatches.id, id))
+    .limit(1);
 
-  const items = await db
+  if (!headerData.length) {
+    throw new Error("Data batch potong tidak ditemukan");
+  }
+
+  // Ambil Detail Karyawan dan Pekerjaannya
+  const itemsData = await db
     .select({
       employeeName: employees.name,
-      qtyInRoll: cuttingBatchItems.qtyInRoll,
-      pricePerRoll: cuttingBatchItems.pricePerRoll,
+      qty: cuttingBatchItems.qty, // UPDATE: Menggunakan qty
+      unit: cuttingBatchItems.unit, // UPDATE: Menambahkan kolom unit (pcs/roll)
+      price: cuttingBatchItems.price, // UPDATE: Menggunakan price (Tarif dasar yang diterapkan)
       subtotal: cuttingBatchItems.subtotal,
     })
     .from(cuttingBatchItems)
-    .innerJoin(employees, eq(cuttingBatchItems.employeeId, employees.id))
-    .where(eq(cuttingBatchItems.batchId, batchId));
+    .leftJoin(employees, eq(cuttingBatchItems.employeeId, employees.id))
+    .where(eq(cuttingBatchItems.batchId, id));
 
-  return { header, items };
+  return {
+    header: headerData[0],
+    items: itemsData,
+  };
 }
 
 // 4. AMBIL DETAIL HARIAN (Untuk Halaman Baru)

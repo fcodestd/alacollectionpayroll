@@ -1,80 +1,103 @@
 // lib/actions/cutting.ts
-"use server"
+"use server";
 
-import { db } from "@/lib/db"
-import { employees, cuttingBatches, cuttingBatchItems } from "@/lib/schema"
-import { eq } from "drizzle-orm"
+import { db } from "@/lib/db";
+import { employees, cuttingBatches, cuttingBatchItems } from "@/lib/schema";
+import { eq } from "drizzle-orm";
 
 // 1. Ambil karyawan khusus Borongan Potong
 export async function getBoronganPotongEmployees() {
-  return await db.select()
+  return await db
+    .select()
     .from(employees)
-    .where(eq(employees.jenis, "borongan potong"))
+    .where(eq(employees.jenis, "borongan potong"));
 }
 
 // 2. Cek apakah di tanggal tersebut sudah ada batch potong
 export async function checkExistingCuttingBatch(dateStr: string) {
-  const existing = await db.select()
+  const existing = await db
+    .select()
     .from(cuttingBatches)
-    .where(eq(cuttingBatches.date, dateStr))
-  
-  return existing.length > 0
+    .where(eq(cuttingBatches.date, dateStr));
+
+  return existing.length > 0;
 }
 
 // 3. Buat Draft Header
-export async function createDraftCuttingBatch(operatorId: number, dateStr: string) {
+export async function createDraftCuttingBatch(
+  operatorId: number,
+  dateStr: string,
+) {
   try {
     // Generate kode unik
-    const code = `BATCH-CUT-${Date.now().toString().slice(-6)}`
-    
-    const [newBatch] = await db.insert(cuttingBatches).values({
-      batchCode: code,
-      date: dateStr,
-      operatorId: operatorId,
-      grandTotal: "0.00",
-    }).returning({ id: cuttingBatches.id, batchCode: cuttingBatches.batchCode })
+    const code = `BATCH-CUT-${Date.now().toString().slice(-6)}`;
 
-    return { success: true, data: newBatch }
+    const [newBatch] = await db
+      .insert(cuttingBatches)
+      .values({
+        batchCode: code,
+        date: dateStr,
+        operatorId: operatorId,
+        grandTotal: "0.00",
+      })
+      .returning({
+        id: cuttingBatches.id,
+        batchCode: cuttingBatches.batchCode,
+      });
+
+    return { success: true, data: newBatch };
   } catch (error) {
-    return { success: false, message: "Gagal membuat draft batch potong." }
+    return { success: false, message: "Gagal membuat draft batch potong." };
   }
 }
 
 // 4. Batalkan (Hapus Header)
 export async function deleteDraftCuttingBatch(batchId: number) {
   try {
-    await db.delete(cuttingBatches).where(eq(cuttingBatches.id, batchId))
-    return { success: true }
+    await db.delete(cuttingBatches).where(eq(cuttingBatches.id, batchId));
+    return { success: true };
   } catch (error) {
-    return { success: false }
+    return { success: false };
   }
 }
 
-// 5. Finalisasi (Update Grand Total & Insert Items)
-export async function finalizeCuttingBatch(batchId: number, items: any[], grandTotal: number) {
+// app/lib/actions/cutting.ts (CARI FUNGSI INI DAN SESUAIKAN)
+
+export async function finalizeCuttingBatch(
+  draftId: number,
+  items: any[],
+  grandTotal: number,
+) {
   try {
-    // Update Header Grand Total
-    await db.update(cuttingBatches)
-      .set({ grandTotal: grandTotal.toString() })
-      .where(eq(cuttingBatches.id, batchId))
+    // 1. Filter hanya karyawan yang memiliki qty lebih dari 0
+    const validItems = items.filter((i) => i.qty > 0);
 
-    // Siapkan data items (HANYA insert karyawan yang QTY-nya lebih dari 0)
-    const payloadItems = items
-      .filter((item) => item.qty > 0)
-      .map((item) => ({
-        batchId: batchId,
-        employeeId: item.employeeId,
-        qtyInRoll: item.qty.toString(),
-        pricePerRoll: item.price.toString(),
-        subtotal: item.subtotal.toString()
-      }))
+    // 2. Insert ke tabel cuttingBatchItems (mengikuti skema baru yang memiliki kolom 'unit')
+    const insertData = validItems.map((item) => ({
+      batchId: draftId,
+      employeeId: item.employeeId,
+      qty: item.qty.toString(), // <-- Mengisi kolom qty
+      unit: item.unit, // <-- Mengisi kolom unit (roll/pcs)
+      price: item.price.toString(), // <-- Mengisi kolom price
+      subtotal: item.subtotal.toString(),
+    }));
 
-    if (payloadItems.length > 0) {
-      await db.insert(cuttingBatchItems).values(payloadItems)
+    if (insertData.length > 0) {
+      await db.insert(cuttingBatchItems).values(insertData);
     }
 
-    return { success: true, message: "Batch potong berhasil disimpan" }
+    // 3. Update grand total di tabel header (cuttingBatches)
+    await db
+      .update(cuttingBatches)
+      .set({ grandTotal: grandTotal.toString() })
+      .where(eq(cuttingBatches.id, draftId));
+
+    return { success: true };
   } catch (error) {
-    return { success: false, message: "Gagal memfinalisasi data." }
+    console.error("Gagal Finalisasi Cutting:", error);
+    return {
+      success: false,
+      message: "Terjadi kesalahan saat menyimpan data ke database.",
+    };
   }
 }

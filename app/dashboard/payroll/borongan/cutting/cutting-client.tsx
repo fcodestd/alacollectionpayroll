@@ -1,17 +1,14 @@
-// app/dashboard/payroll/borongan/cutting/cutting-client.tsx
 "use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Scissors,
-  ChevronLeft,
-  Save,
-  Trash2,
   CalendarDays,
   Loader2,
   CheckCircle2,
   Lock,
+  Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +40,6 @@ const formatRp = (angka: number) =>
     minimumFractionDigits: 0,
   }).format(angka);
 
-// Mengambil tanggal hari ini secara otomatis (YYYY-MM-DD)
 const getTodayYMD = () => {
   const d = new Date();
   const year = d.getFullYear();
@@ -52,7 +48,6 @@ const getTodayYMD = () => {
   return `${year}-${month}-${day}`;
 };
 
-// Format tanggal untuk tampilan UI yang lebih indah (cth: 1 Mei 2026)
 const formatTanggalIndo = (dateStr: string) => {
   return new Date(dateStr).toLocaleDateString("id-ID", {
     weekday: "long",
@@ -72,17 +67,20 @@ export default function CuttingClientPage({
   const { toast } = useToast();
   const router = useRouter();
 
-  // State Navigasi (Tanggal otomatis hari ini dan tidak bisa diubah)
+  // State Navigasi
   const [step, setStep] = useState<1 | 2>(1);
-  const targetDate = getTodayYMD(); // Tanggal statis hari ini
+  const targetDate = getTodayYMD();
   const [isCheckingDate, setIsCheckingDate] = useState(false);
 
   // State Transaksi (Header)
   const [draftId, setDraftId] = useState<number | null>(null);
   const [draftCode, setDraftCode] = useState<string>("");
-  const [globalPrice, setGlobalPrice] = useState<number>(0);
 
-  // State Items: Array [{ employeeId, name, qty, price, subtotal }]
+  // BARU: State untuk dua harga global
+  const [globalPriceRoll, setGlobalPriceRoll] = useState<number>(0);
+  const [globalPricePcs, setGlobalPricePcs] = useState<number>(0);
+
+  // State Items: [{ employeeId, name, qty, unit, price, subtotal }]
   const [items, setItems] = useState<any[]>([]);
 
   // State Modal
@@ -95,14 +93,15 @@ export default function CuttingClientPage({
     const saved = localStorage.getItem("draftCuttingBatch");
     if (saved) {
       const data = JSON.parse(saved);
-      // Validasi: Jika draft di local storage berbeda hari dengan hari ini, hapus draftnya.
       if (data.targetDate !== getTodayYMD()) {
         localStorage.removeItem("draftCuttingBatch");
       } else {
         setStep(2);
         setDraftId(data.draftId);
         setDraftCode(data.draftCode);
-        setGlobalPrice(data.globalPrice);
+        // Mendukung data lama atau baru
+        setGlobalPriceRoll(data.globalPriceRoll || data.globalPrice || 0);
+        setGlobalPricePcs(data.globalPricePcs || 0);
         setItems(data.items || []);
       }
     }
@@ -112,43 +111,60 @@ export default function CuttingClientPage({
     if (step === 2 && draftId) {
       localStorage.setItem(
         "draftCuttingBatch",
-        JSON.stringify({ draftId, draftCode, targetDate, globalPrice, items }),
+        JSON.stringify({
+          draftId,
+          draftCode,
+          targetDate,
+          globalPriceRoll,
+          globalPricePcs,
+          items,
+        }),
       );
     }
-  }, [step, draftId, draftCode, targetDate, globalPrice, items]);
+  }, [
+    step,
+    draftId,
+    draftCode,
+    targetDate,
+    globalPriceRoll,
+    globalPricePcs,
+    items,
+  ]);
 
   // --- 2. SINKRONISASI HARGA GLOBAL ---
+  // Jika admin mengetik harga global, update semua harga di tabel sesuai dengan satuannya
   useEffect(() => {
     if (items.length > 0) {
       setItems((prev) =>
-        prev.map((item) => ({
-          ...item,
-          price: globalPrice,
-          subtotal: (item.qty || 0) * globalPrice,
-        })),
+        prev.map((item) => {
+          const appliedPrice =
+            item.unit === "pcs" ? globalPricePcs : globalPriceRoll;
+          return {
+            ...item,
+            price: appliedPrice,
+            subtotal: (item.qty || 0) * appliedPrice,
+          };
+        }),
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [globalPrice]);
+  }, [globalPriceRoll, globalPricePcs]);
 
   // --- 3. ALUR MULAI TRANSAKSI ---
   const handleStartTransaction = async () => {
     setIsCheckingDate(true);
-
-    // Cek apakah hari ini sudah ada transaksi potong
     const isExists = await checkExistingCuttingBatch(targetDate);
 
     if (isExists) {
       toast({
         title: "Akses Ditolak",
-        description: `Batch potong untuk hari ini (${formatTanggalIndo(targetDate)}) sudah dikerjakan.`,
+        description: `Batch potong untuk hari ini sudah dikerjakan.`,
         variant: "destructive",
       });
       setIsCheckingDate(false);
       return;
     }
 
-    // Jika aman, Insert Draft
     const res = await createDraftCuttingBatch(operatorId, targetDate);
     setIsCheckingDate(false);
 
@@ -160,7 +176,8 @@ export default function CuttingClientPage({
         employeeId: emp.id,
         name: emp.name,
         qty: 0,
-        price: globalPrice,
+        unit: "roll", // Default satuan
+        price: globalPriceRoll,
         subtotal: 0,
       }));
       setItems(initialItems);
@@ -174,24 +191,48 @@ export default function CuttingClientPage({
     }
   };
 
-  // --- 4. UPDATE QTY PER BARIS ---
+  // --- 4. UPDATE QTY & UNIT PER BARIS ---
   const handleUpdateQty = (empId: number, val: number) => {
     setItems((prev) =>
       prev.map((item) => {
         if (item.employeeId === empId) {
-          return { ...item, qty: val, subtotal: val * globalPrice };
+          return { ...item, qty: val, subtotal: val * item.price };
         }
         return item;
       }),
     );
   };
 
+  const handleUpdateUnit = (empId: number, newUnit: "roll" | "pcs") => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.employeeId === empId) {
+          const newPrice = newUnit === "pcs" ? globalPricePcs : globalPriceRoll;
+          return {
+            ...item,
+            unit: newUnit,
+            price: newPrice,
+            subtotal: (item.qty || 0) * newPrice,
+          };
+        }
+        return item;
+      }),
+    );
+  };
+
+  // Kalkulasi total
   const grandTotal = items.reduce((acc, curr) => acc + curr.subtotal, 0);
-  const totalRolls = items.reduce((acc, curr) => acc + (curr.qty || 0), 0);
+  const totalRolls = items
+    .filter((i) => i.unit === "roll")
+    .reduce((acc, curr) => acc + (curr.qty || 0), 0);
+  const totalPcs = items
+    .filter((i) => i.unit === "pcs")
+    .reduce((acc, curr) => acc + (curr.qty || 0), 0);
+  const totalInputCount = items.filter((i) => (i.qty || 0) > 0).length;
 
   // --- 5. FINALISASI & PEMBATALAN ---
   const confirmFinalize = async () => {
-    if (totalRolls === 0) {
+    if (totalInputCount === 0) {
       toast({
         title: "Data Kosong",
         description:
@@ -237,14 +278,14 @@ export default function CuttingClientPage({
   const resetState = () => {
     setStep(1);
     setDraftId(null);
-    setGlobalPrice(0);
+    setGlobalPriceRoll(0);
+    setGlobalPricePcs(0);
     setItems([]);
     setIsConfirmOpen(false);
     setIsCancelDialogOpen(false);
   };
 
   // ===================== RENDER LAYAR =====================
-
   if (step === 1) {
     return (
       <div className="max-w-md mx-auto mt-16 bg-white border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-500">
@@ -287,7 +328,6 @@ export default function CuttingClientPage({
                 "Buka Sesi Hari Ini"
               )}
             </Button>
-
             <Button
               variant="ghost"
               className="w-full h-12 rounded-xl text-slate-500 hover:text-slate-900"
@@ -304,7 +344,7 @@ export default function CuttingClientPage({
   // --- STEP 2: MAIN INPUT FORM ---
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-28">
-      {/* 1. HEADER CARD (INFO BATCH) */}
+      {/* 1. HEADER CARD */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 flex flex-col md:flex-row md:items-start justify-between gap-6">
         <div className="space-y-4">
           <div>
@@ -332,7 +372,6 @@ export default function CuttingClientPage({
           </div>
         </div>
 
-        {/* SHADCN DARK CARD FOR TOTAL */}
         <div className="bg-slate-950 text-white rounded-2xl p-6 min-w-[320px] flex flex-col justify-center border border-slate-800 shadow-xl shadow-slate-900/10">
           <p className="text-slate-400 text-sm font-semibold mb-1 uppercase tracking-wider">
             Total Biaya Potong
@@ -341,35 +380,66 @@ export default function CuttingClientPage({
             {formatRp(grandTotal)}
           </p>
           <div className="mt-5 pt-4 border-t border-slate-800 flex justify-between items-center text-sm text-slate-300">
-            <span className="font-medium">Total Roll Kain Selesai:</span>
-            <span className="font-bold text-white bg-slate-800 px-3 py-1 rounded-lg">
-              {totalRolls} Roll
-            </span>
+            <span className="font-medium">Total Dikerjakan:</span>
+            <div className="flex gap-2">
+              <span className="font-bold text-white bg-slate-800 px-2 py-1 rounded-lg text-xs">
+                {totalRolls} Roll
+              </span>
+              <span className="font-bold text-white bg-slate-800 px-2 py-1 rounded-lg text-xs">
+                {totalPcs} Pcs
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* 2. TABLE CARD & GLOBAL PRICE CONTROL */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-        {/* PANEL KONTROL HARGA GLOBAL - SHADCN STYLE FLOATING BAR */}
+        {/* PANEL DUA HARGA GLOBAL */}
         <div className="p-4 bg-white border-b border-slate-100">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-slate-50 border border-slate-200 rounded-xl gap-4">
             <div>
-              <h3 className="font-bold text-slate-900">Tarif Dasar per Roll</h3>
+              <h3 className="font-bold text-slate-900">Tarif Dasar Potong</h3>
               <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                Harga ini akan disinkronisasi ke seluruh karyawan di tabel.
+                Tentukan harga global, sistem akan otomatis menghitung ke
+                karyawan.
               </p>
             </div>
-            <div className="flex items-center bg-white rounded-lg p-1 shadow-sm border border-slate-200 w-full sm:w-auto">
-              <span className="text-sm font-bold text-slate-400 px-4">Rp</span>
-              <Input
-                type="number"
-                min="0"
-                value={globalPrice || ""}
-                onChange={(e) => setGlobalPrice(Number(e.target.value))}
-                className="border-0 shadow-none focus-visible:ring-0 text-right font-black text-lg text-slate-900 w-full sm:w-40 h-10 placeholder:text-slate-300"
-                placeholder="0"
-              />
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              {/* Input Harga Roll */}
+              <div className="flex items-center bg-white rounded-lg p-1 shadow-sm border border-slate-200">
+                <span className="text-sm font-bold text-slate-400 px-3 border-r border-slate-100">
+                  Roll
+                </span>
+                <span className="text-sm font-bold text-slate-400 px-2">
+                  Rp
+                </span>
+                <Input
+                  type="number"
+                  min="0"
+                  value={globalPriceRoll || ""}
+                  onChange={(e) => setGlobalPriceRoll(Number(e.target.value))}
+                  className="border-0 shadow-none focus-visible:ring-0 text-right font-black text-slate-900 w-full sm:w-28 h-9 placeholder:text-slate-300"
+                  placeholder="0"
+                />
+              </div>
+              {/* Input Harga Pcs */}
+              <div className="flex items-center bg-white rounded-lg p-1 shadow-sm border border-slate-200">
+                <span className="text-sm font-bold text-slate-400 px-3 border-r border-slate-100">
+                  Pcs
+                </span>
+                <span className="text-sm font-bold text-slate-400 px-2">
+                  Rp
+                </span>
+                <Input
+                  type="number"
+                  min="0"
+                  value={globalPricePcs || ""}
+                  onChange={(e) => setGlobalPricePcs(Number(e.target.value))}
+                  className="border-0 shadow-none focus-visible:ring-0 text-right font-black text-slate-900 w-full sm:w-28 h-9 placeholder:text-slate-300"
+                  placeholder="0"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -379,14 +449,14 @@ export default function CuttingClientPage({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-b border-slate-100 bg-white">
-                <TableHead className="w-[40%] h-12 text-xs font-bold text-slate-500 uppercase tracking-wider pl-8">
+                <TableHead className="w-[35%] h-12 text-xs font-bold text-slate-500 uppercase tracking-wider pl-8">
                   Nama Karyawan
                 </TableHead>
-                <TableHead className="w-[20%] h-12 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
-                  Qty (Roll)
+                <TableHead className="w-[25%] h-12 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
+                  Qty & Satuan
                 </TableHead>
                 <TableHead className="w-[20%] h-12 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">
-                  Tarif Diterapkan
+                  Tarif Satuan
                 </TableHead>
                 <TableHead className="w-[20%] h-12 text-xs font-bold text-slate-500 uppercase tracking-wider text-right pr-8">
                   Subtotal Bersih
@@ -399,30 +469,49 @@ export default function CuttingClientPage({
                   key={item.employeeId}
                   className={`transition-all duration-200 border-b border-slate-50 ${item.qty > 0 ? "bg-indigo-50/30" : "hover:bg-slate-50"}`}
                 >
-                  <TableCell className="pl-8 py-5">
+                  <TableCell className="pl-8 py-4">
                     <div className="font-bold text-slate-900 text-sm">
                       {item.name}
                     </div>
                   </TableCell>
-                  <TableCell className="py-5">
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={item.qty || ""}
-                      onChange={(e) =>
-                        handleUpdateQty(item.employeeId, Number(e.target.value))
-                      }
-                      className={`w-24 text-center font-bold text-base mx-auto h-11 transition-all shadow-sm ${item.qty > 0 ? "border-indigo-400 bg-white text-indigo-900 ring-2 ring-indigo-100" : "border-slate-200 bg-slate-50 focus-visible:ring-slate-400 focus-visible:bg-white"}`}
-                      placeholder="0"
-                    />
+                  <TableCell className="py-4">
+                    <div className="flex justify-center items-center gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step={item.unit === "roll" ? "0.1" : "1"} // Roll bisa desimal, Pcs wajib bulat
+                        value={item.qty || ""}
+                        onChange={(e) =>
+                          handleUpdateQty(
+                            item.employeeId,
+                            Number(e.target.value),
+                          )
+                        }
+                        className={`w-20 text-center font-bold text-base h-10 transition-all shadow-sm ${item.qty > 0 ? "border-indigo-400 bg-white text-indigo-900 ring-1 ring-indigo-100" : "border-slate-200 bg-slate-50"}`}
+                        placeholder="0"
+                      />
+                      <select
+                        value={item.unit}
+                        onChange={(e) =>
+                          handleUpdateUnit(
+                            item.employeeId,
+                            e.target.value as "roll" | "pcs",
+                          )
+                        }
+                        className="h-10 px-2 rounded-md border border-slate-200 bg-white text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="roll">Roll</option>
+                        <option value="pcs">Pcs</option>
+                      </select>
+                    </div>
                   </TableCell>
-                  <TableCell className="py-5 text-right">
+                  <TableCell className="py-4 text-right">
                     <span className="text-sm font-semibold text-slate-400">
-                      {formatRp(item.price)}
+                      {formatRp(item.price)}{" "}
+                      <span className="text-xs">/{item.unit}</span>
                     </span>
                   </TableCell>
-                  <TableCell className="py-5 text-right pr-8">
+                  <TableCell className="py-4 text-right pr-8">
                     <span
                       className={`font-bold text-lg tracking-tight ${item.qty > 0 ? "text-indigo-700" : "text-slate-300"}`}
                     >
@@ -431,17 +520,6 @@ export default function CuttingClientPage({
                   </TableCell>
                 </TableRow>
               ))}
-
-              {items.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="h-48 text-center text-slate-400 font-medium"
-                  >
-                    Tidak ada data karyawan borongan potong yang ditemukan.
-                  </TableCell>
-                </TableRow>
-              )}
             </TableBody>
           </Table>
         </div>
@@ -458,22 +536,22 @@ export default function CuttingClientPage({
             Batalkan Transaksi
           </Button>
           <Button
-            className="h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 rounded-xl shadow-lg shadow-indigo-600/20 transition-all"
+            className="h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 rounded-xl shadow-lg shadow-indigo-600/20"
             onClick={() => setIsConfirmOpen(true)}
           >
-            <Save className="h-4 w-4 mr-2" /> Simpan Batch Potong
+            <Save className="h-4 w-4 mr-2" /> Simpan Batch
           </Button>
         </div>
       </div>
 
-      {/* ================= MODAL DIALOGS ================= */}
+      {/* MODAL DIALOGS */}
       <ConfirmDialog
         isOpen={isConfirmOpen}
         onClose={() => setIsConfirmOpen(false)}
         onConfirm={confirmFinalize}
         isLoading={isFinalizing}
         title="Finalisasi Batch Potong"
-        description={`Anda akan mengunci data potong kain untuk hari ini. Total upah yang harus disiapkan adalah ${formatRp(grandTotal)}.`}
+        description={`Anda akan mengunci data potong kain hari ini. Total upah yang harus disiapkan adalah ${formatRp(grandTotal)}.`}
         confirmText="Ya, Kunci & Simpan"
       />
 
@@ -482,7 +560,7 @@ export default function CuttingClientPage({
         onClose={() => setIsCancelDialogOpen(false)}
         onConfirm={confirmCancelDraft}
         title="Batalkan Pekerjaan Hari Ini?"
-        description="Sesi input ini akan dihapus sepenuhnya. Karyawan yang sudah Anda isi jumlah potongannya akan hilang."
+        description="Sesi input ini akan dihapus sepenuhnya. Karyawan yang sudah diisi jumlah potongannya akan hilang."
         confirmText="Ya, Batalkan Sesi"
       />
     </div>

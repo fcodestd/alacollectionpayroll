@@ -8,6 +8,7 @@ const formatRp = (angka: number) =>
     currency: "IDR",
     minimumFractionDigits: 0,
   }).format(angka);
+
 const namaHari = [
   "MINGGU",
   "SENIN",
@@ -17,6 +18,7 @@ const namaHari = [
   "JUMAT",
   "SABTU",
 ];
+
 const namaBulan = [
   "Jan",
   "Feb",
@@ -51,7 +53,11 @@ export default function SlipPotongPrint({
   isPdfMode = false,
 }: {
   employee: any;
-  data: Record<string, { qty: number; price: number; subtotal: number }>;
+  // UPDATE: Menambahkan properti `unit` ke dalam Record data
+  data: Record<
+    string,
+    { qty: number; unit?: string; price: number; subtotal: number }
+  >;
   startDate: string;
   endDate: string;
   isPdfMode?: boolean;
@@ -198,8 +204,9 @@ export default function SlipPotongPrint({
                             </div>
                           ) : dayData ? (
                             <div className="h-full flex flex-col justify-center items-center text-center p-2 bg-indigo-50/10">
-                              <p className="text-[11px] font-semibold text-gray-700 tracking-tight">
-                                {dayData.qty} Roll &times;{" "}
+                              {/* UPDATE: Memunculkan unit Pcs/Roll dari database (fallback ke 'Roll' untuk data lama) */}
+                              <p className="text-[11px] font-semibold text-gray-700 tracking-tight capitalize">
+                                {dayData.qty} {dayData.unit || "Roll"} &times;{" "}
                                 {formatRp(dayData.price)}
                               </p>
                               <div className="w-16 h-px bg-indigo-200 my-2"></div>

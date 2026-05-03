@@ -117,6 +117,7 @@ export default function SlipGajiPrint({
             <p className="text-sm text-gray-500 mt-1">
               Dicetak pada: {formatDatePrint(new Date())},{" "}
               {new Date().toLocaleTimeString("id-ID", {
+                timeZone: "Asia/Jakarta",
                 hour: "2-digit",
                 minute: "2-digit",
               })}

@@ -1,4 +1,3 @@
-// app/employee/kinerja/kinerja-client.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -31,8 +30,16 @@ const formatRp = (angka: number) =>
     minimumFractionDigits: 0,
   }).format(angka);
 
+// Helper Waktu Khusus WIB (Asia/Jakarta)
+const getJakartaDate = () => {
+  const dateStr = new Date().toLocaleString("en-US", {
+    timeZone: "Asia/Jakarta",
+  });
+  return new Date(dateStr);
+};
+
 const getThisWeek = () => {
-  const curr = new Date();
+  const curr = getJakartaDate(); // UPDATE: Menggunakan waktu WIB
   const day = curr.getDay();
   const diffToMonday = day === 0 ? -6 : 1 - day;
   const start = new Date(curr);
@@ -89,6 +96,7 @@ export default function KinerjaClient({ employee }: { employee: any }) {
     setStartDate(thisWeekDates.start);
     setEndDate(thisWeekDates.end);
   };
+
   const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setFilterMonth(val);
@@ -278,8 +286,10 @@ export default function KinerjaClient({ employee }: { employee: any }) {
                     </div>
                     <div className="flex-1 pl-4 flex justify-between items-center">
                       <div>
-                        <p className="text-xs font-semibold text-slate-600">
-                          {dayData.qty} Roll &times; {formatRp(dayData.price)}
+                        {/* UPDATE: Memunculkan Pcs/Roll secara dinamis */}
+                        <p className="text-xs font-semibold text-slate-600 capitalize">
+                          {dayData.qty} {dayData.unit || "Roll"} &times;{" "}
+                          {formatRp(dayData.price)}
                         </p>
                         <p className="text-lg font-bold text-indigo-700 mt-0.5">
                           {formatRp(dayData.subtotal)}
@@ -376,7 +386,6 @@ export default function KinerjaClient({ employee }: { employee: any }) {
       </div>
 
       {/* BOTTOM SHEET / MODAL UNTUK JAHIT */}
-      {/* MODAL UNTUK DETAIL JAHIT */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="w-[90vw] max-w-md p-0 overflow-hidden rounded-3xl gap-0 border-none shadow-2xl">
           <div className="px-6 py-5 bg-slate-900 border-b border-slate-800 text-center">

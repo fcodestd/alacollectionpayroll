@@ -53,8 +53,13 @@ export default function DetailPotongClientPage({
   const [startDate, setStartDate] = useState(thisWeekDates.start);
   const [endDate, setEndDate] = useState(thisWeekDates.end);
   const [filterMonth, setFilterMonth] = useState("");
+
+  // UPDATE: Menambahkan `unit?: string` pada tipe State
   const [data, setData] = useState<
-    Record<string, { qty: number; price: number; subtotal: number }>
+    Record<
+      string,
+      { qty: number; unit?: string; price: number; subtotal: number }
+    >
   >({});
   const [isLoading, setIsLoading] = useState(true);
 
@@ -91,6 +96,7 @@ export default function DetailPotongClientPage({
     setStartDate(thisWeekDates.start);
     setEndDate(thisWeekDates.end);
   };
+
   const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setFilterMonth(val);
@@ -221,8 +227,10 @@ export default function DetailPotongClientPage({
                     </div>
                     {dayData ? (
                       <div className="flex-1 flex flex-col items-center justify-center text-center">
-                        <p className="text-sm font-semibold text-slate-600 mb-1 tracking-tight">
-                          {dayData.qty} Roll &times; {formatRp(dayData.price)}
+                        {/* UPDATE: Memunculkan Pcs/Roll secara Dinamis dan menggunakan class 'capitalize' */}
+                        <p className="text-sm font-semibold text-slate-600 mb-1 tracking-tight capitalize">
+                          {dayData.qty} {dayData.unit || "Roll"} &times;{" "}
+                          {formatRp(dayData.price)}
                         </p>
                         <p className="text-xl font-black text-indigo-700">
                           {formatRp(dayData.subtotal)}

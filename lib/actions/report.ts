@@ -95,11 +95,13 @@ export async function getCuttingReport(
   startDate: string,
   endDate: string,
 ) {
-  const records = await db
+  // 1. Ambil data dari database
+  const queryResult = await db
     .select({
       date: cuttingBatches.date,
-      qty: cuttingBatchItems.qtyInRoll,
-      price: cuttingBatchItems.pricePerRoll,
+      qty: cuttingBatchItems.qty,
+      unit: cuttingBatchItems.unit, // <--- INI KUNCI UTAMANYA! Pastikan unit diambil
+      price: cuttingBatchItems.price,
       subtotal: cuttingBatchItems.subtotal,
     })
     .from(cuttingBatchItems)
@@ -112,24 +114,34 @@ export async function getCuttingReport(
       ),
     );
 
-  // Agregasi per tanggal (Meskipun harusnya 1 hari 1 batch, ini untuk safety)
-  const result: Record<
+  // 2. Format data menjadi object Record<string, data> agar mudah dibaca oleh Frontend UI
+  const formattedData: Record<
     string,
-    { qty: number; price: number; subtotal: number }
+    { qty: number; unit: string; price: number; subtotal: number }
   > = {};
 
-  records.forEach((row) => {
-    const dStr = row.date;
-    if (!result[dStr]) {
-      result[dStr] = { qty: 0, price: Number(row.price), subtotal: 0 };
+  queryResult.forEach((row) => {
+    // Karena tipe data date bisa berupa objek Date atau string YYYY-MM-DD tergantung driver postgres, kita pastikan formatnya:
+    const dateStr =
+      typeof row.date === "string"
+        ? row.date
+        : row.date.toISOString().split("T")[0];
+
+    // Jika dalam 1 hari ada 2 sesi potong, kita totalkan (opsional, tergantung alur bisnis)
+    if (formattedData[dateStr]) {
+      formattedData[dateStr].qty += Number(row.qty);
+      formattedData[dateStr].subtotal += Number(row.subtotal);
+    } else {
+      formattedData[dateStr] = {
+        qty: Number(row.qty),
+        unit: row.unit || "roll", // <--- Masukkan unit-nya ke dalam objek hasil
+        price: Number(row.price),
+        subtotal: Number(row.subtotal),
+      };
     }
-    result[dStr].qty += Number(row.qty);
-    result[dStr].subtotal += Number(row.subtotal);
-    // Jika ada update harga di hari yg sama, kita ambil yang terakhir
-    result[dStr].price = Number(row.price);
   });
 
-  return result;
+  return formattedData;
 }
 
 export async function getDailyReport(
